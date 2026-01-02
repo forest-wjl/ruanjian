@@ -10,6 +10,7 @@ class LifeHelper:
     def __init__(self):
         # 初始化本地数据文件
         self.data_path = "life_helper_data.json"
+        self.txt_data_path = "life_helper_data.txt"  # TXT可读文件路径
         self._load_data()
 
     def _load_data(self):
@@ -19,30 +20,95 @@ class LifeHelper:
                 self.data = json.load(f)
         else:
             self.data = {
-                "todos": [],  # 待办事项：[{"content": "xxx", "done": False, "time": "2025-12-31"}]
-                "expenses": []  # 记账：[{"item": "xxx", "amount": 10, "time": "2025-12-31"}]
+                "todos": [],
+                "expenses": []
             }
 
     def _save_data(self):
-        """保存数据到本地"""
+        """保存数据到本地（同时保存JSON和TXT格式）"""
+        # 1. 保存JSON文件（程序运行依赖）
         with open(self.data_path, "w", encoding="utf-8") as f:
             json.dump(self.data, f, ensure_ascii=False, indent=2)
 
-    # 功能1：待办事项管理（新增删除功能）
+        # 2. 保存TXT文件（纯文本可读格式）
+        with open(self.txt_data_path, "w", encoding="utf-8") as f:
+            # 写入文件头部
+            f.write("=" * 30 + "\n")
+            f.write("        本地生活小助手数据\n")
+            f.write("=" * 30 + "\n\n")
+
+            # 写入待办事项
+            f.write("【待办事项】\n")
+            if not self.data["todos"]:
+                f.write("暂无待办事项\n")
+            else:
+                for i, todo in enumerate(self.data["todos"], 1):
+                    status = "✅ 已完成" if todo["done"] else "🔲 未完成"
+                    f.write(f"{i}. 内容：{todo['content']}\n")
+                    f.write(f"   时间：{todo['time']}\n")
+                    f.write(f"   状态：{status}\n\n")
+
+            f.write("-" * 25 + "\n\n")
+
+            # 写入记账数据
+            f.write("【记账数据】\n")
+            if not self.data["expenses"]:
+                f.write("暂无支出记录\n")
+            else:
+                total_amount = 0.0
+                for exp in self.data["expenses"]:
+                    f.write(f"项目：{exp['item']}\n")
+                    f.write(f"金额：{exp['amount']:.2f}元\n")
+                    f.write(f"时间：{exp['time']}\n\n")
+                    total_amount += exp["amount"]
+                f.write(f"所有支出总金额：{total_amount:.2f}元\n")
+
+            # 写入文件尾部
+            f.write("\n" + "=" * 30 + "\n")
+            f.write(f"最后更新：{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write("=" * 30 + "\n")
+
+        # 提示TXT文件位置
+        txt_abs_path = os.path.abspath(self.txt_data_path)
+        print(f"✅ 可读TXT数据文件已保存：{txt_abs_path}")
+
+    # 功能1：待办事项管理（新增自定义时间功能）
     def todo_manager(self):
         print("\n==== 待办事项管理 ====")
-        print("1. 添加待办")
+        print("1. 添加待办（可自定义时间）")
         print("2. 查看待办")
         print("3. 标记待办为完成")
-        print("4. 删除待办事项")  # 新增删除选项
+        print("4. 删除待办事项")
         choice = input("请选择操作（1/2/3/4）：")
 
         if choice == "1":
             content = input("输入待办内容：")
+            # 新增：选择是否自定义时间
+            custom_time_choice = input("是否自定义待办时间？（y/n，默认当前日期）：").lower()
+            todo_time = ""
+
+            if custom_time_choice == "y":
+                # 循环校验，直到输入正确格式的时间
+                while True:
+                    time_input = input("输入待办时间（格式：YYYY-MM-DD，如：2026-02-15）：")
+                    try:
+                        # 验证时间格式是否有效
+                        datetime.datetime.strptime(time_input, "%Y-%m-%d")
+                        todo_time = time_input
+                        print(f"✅ 已选择待办时间：{todo_time}")
+                        break
+                    except ValueError:
+                        print("❌ 时间格式无效！请严格按照YYYY-MM-DD格式输入（如2026-01-01），重新输入：")
+            else:
+                # 使用当前日期作为默认时间
+                todo_time = datetime.date.today().strftime("%Y-%m-%d")
+                print(f"✅ 使用默认时间：{todo_time}")
+
+            # 添加待办到数据列表
             self.data["todos"].append({
                 "content": content,
                 "done": False,
-                "time": datetime.date.today().strftime("%Y-%m-%d")
+                "time": todo_time
             })
             self._save_data()
             print("✅ 待办添加成功！")
@@ -54,13 +120,12 @@ class LifeHelper:
             print("\n==== 我的待办列表 ====")
             for i, todo in enumerate(self.data["todos"], 1):
                 status = "✅ 已完成" if todo["done"] else "🔲 未完成"
-                print(f"序号：{i} | 内容：{todo['content']} | 创建时间：{todo['time']} | 状态：{status}")
+                print(f"序号：{i} | 内容：{todo['content']} | 创建/指定时间：{todo['time']} | 状态：{status}")
 
         elif choice == "3":
             if not self.data["todos"]:
                 print("暂无待办事项~")
                 return
-            # 先展示待办列表，方便用户选择序号
             print("\n==== 我的待办列表 ====")
             for i, todo in enumerate(self.data["todos"], 1):
                 status = "✅ 已完成" if todo["done"] else "🔲 未完成"
@@ -79,11 +144,10 @@ class LifeHelper:
             except ValueError:
                 print("❌ 请输入有效的数字序号！")
 
-        elif choice == "4":  # 新增删除待办逻辑
+        elif choice == "4":
             if not self.data["todos"]:
                 print("暂无待办事项，无需删除！")
                 return
-            # 先展示待办列表，方便用户选择序号
             print("\n==== 我的待办列表 ====")
             for i, todo in enumerate(self.data["todos"], 1):
                 status = "✅ 已完成" if todo["done"] else "🔲 未完成"
@@ -91,7 +155,6 @@ class LifeHelper:
             try:
                 idx = int(input("\n输入要删除的待办序号：")) - 1
                 if 0 <= idx < len(self.data["todos"]):
-                    # 获取待办内容，确认删除
                     todo_content = self.data["todos"][idx]["content"]
                     confirm = input(f"确定要删除待办「{todo_content}」吗？（y/n）：").lower()
                     if confirm == "y":
@@ -136,7 +199,7 @@ class LifeHelper:
                     total += exp["amount"]
             print(f"本月总支出：{total:.2f}元")
 
-    # 功能3：随机日程推荐（基于本地模板）
+    # 功能3：随机日程推荐
     def random_schedule(self):
         print("\n==== 随机日程推荐 ====")
         schedules = [
@@ -148,7 +211,7 @@ class LifeHelper:
         ]
         print(f"💡 今日推荐：{random.choice(schedules)}")
 
-    # 功能4：生成搜索链接（打开浏览器用）
+    # 功能4：生成搜索链接
     def gen_search_link(self):
         print("\n==== 生成搜索链接 ====")
         keyword = input("输入要搜索的内容：")
@@ -159,13 +222,11 @@ class LifeHelper:
     # 功能5：安全密码生成器
     def password_generator(self):
         print("\n==== 安全密码生成器 ====")
-        # 密码字符集
         lower_chars = "abcdefghijklmnopqrstuvwxyz"
         upper_chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
         digits = "0123456789"
         symbols = "!@#$%^&*()_+-=[]{}|;:,.<>?"
 
-        # 获取用户配置
         try:
             pwd_length = int(input("输入密码长度（建议8位及以上）："))
             if pwd_length < 4:
@@ -176,12 +237,10 @@ class LifeHelper:
             print("❌ 输入无效，请输入数字！")
             return
 
-        # 组装字符集
         char_pool = lower_chars + upper_chars + digits
         if use_symbol:
             char_pool += symbols
 
-        # 生成密码（确保至少包含各类字符各1个）
         pwd_list = []
         pwd_list.append(random.choice(lower_chars))
         pwd_list.append(random.choice(upper_chars))
@@ -189,11 +248,9 @@ class LifeHelper:
         if use_symbol:
             pwd_list.append(random.choice(symbols))
 
-        # 补充剩余长度
         if pwd_length > len(pwd_list):
             pwd_list += random.choices(char_pool, k=pwd_length - len(pwd_list))
 
-        # 打乱顺序
         random.shuffle(pwd_list)
         password = "".join(pwd_list)
 
@@ -211,19 +268,16 @@ class LifeHelper:
         try:
             with open(file_path, "r", encoding="utf-8") as f:
                 content = f.read()
-                lines = content.splitlines()  # 按行分割（不含换行符）
+                lines = content.splitlines()
         except Exception as e:
             print(f"❌ 文件读取失败：{str(e)}")
             return
 
-        # 统计数据
-        total_chars = len(content)  # 含空格、标点的总字符数
-        pure_chars = len(content.replace(" ", "").replace("\n", "").replace("\t", ""))  # 不含空格的纯字符数
-        line_count = len(lines)  # 总行数
-        # 单词数（按空格分割，过滤空字符串）
+        total_chars = len(content)
+        pure_chars = len(content.replace(" ", "").replace("\n", "").replace("\t", ""))
+        line_count = len(lines)
         word_count = len([word for word in content.split() if word.strip()])
 
-        # 输出结果
         print(f"\n==== 文本统计结果 ====")
         print(f"总字符数（含空格/换行）：{total_chars}")
         print(f"纯字符数（不含空格/换行）：{pure_chars}")
@@ -237,7 +291,6 @@ class LifeHelper:
         print("2. 推算N天前/后的日期")
         choice = input("请选择操作（1/2）：")
 
-        # 日期格式化辅助函数
         def parse_date(date_str):
             try:
                 return datetime.datetime.strptime(date_str, "%Y-%m-%d").date()
@@ -245,8 +298,8 @@ class LifeHelper:
                 return None
 
         if choice == "1":
-            date1_str = input("输入第一个日期（格式：YYYY-MM-DD，如：2025-12-31）：")
-            date2_str = input("输入第二个日期（格式：YYYY-MM-DD，如：2026-01-01）：")
+            date1_str = input("输入第一个日期（格式：YYYY-MM-DD）：")
+            date2_str = input("输入第二个日期（格式：YYYY-MM-DD）：")
             date1 = parse_date(date1_str)
             date2 = parse_date(date2_str)
 
@@ -259,7 +312,7 @@ class LifeHelper:
 
         elif choice == "2":
             try:
-                days = int(input("输入天数（正数=未来，负数=过去，如：7 或 -3）："))
+                days = int(input("输入天数（正数=未来，负数=过去）："))
             except ValueError:
                 print("❌ 天数必须是数字！")
                 return
@@ -268,7 +321,7 @@ class LifeHelper:
             print(f"✅ 当前日期：{current_date.strftime('%Y-%m-%d')}")
             print(f"✅ {days} 天后/前的日期：{target_date.strftime('%Y-%m-%d')}")
 
-    # 功能8：简易文本加密/解密（凯撒密码+中文占位混淆）
+    # 功能8：凯撒密码加密/解密
     def caesar_cipher(self):
         print("\n==== 凯撒密码加密/解密 ====")
         print("1. 加密文本（含中文占位混淆）")
@@ -276,13 +329,12 @@ class LifeHelper:
         choice = input("请选择操作（1/2）：")
         text = input("输入要处理的文本：")
         try:
-            shift = int(input("输入偏移量（建议1-25，如：3）："))
+            shift = int(input("输入偏移量（建议1-25）："))
         except ValueError:
             print("❌ 偏移量必须是数字！")
             return
 
         result = []
-        # 凯撒密码核心逻辑（仅处理英文字母，其他字符不变）
         for char in text:
             if char.islower():
                 new_char = chr((ord(char) - ord('a') + shift * (1 if choice == "1" else -1)) % 26 + ord('a'))
@@ -295,13 +347,10 @@ class LifeHelper:
 
         final_text = "".join(result)
 
-        # 加密时添加中文随机占位（解密时不处理，占位符不影响英文还原）
         if choice == "1":
-            # 中文占位词库
             chinese_placeholders = ["的", "了", "在", "是", "我", "你", "他", "她", "它", "们", "这", "那"]
             mixed_text = []
             for char in final_text:
-                # 每添加1个密文字符，随机插入0-1个中文占位符
                 mixed_text.append(char)
                 if random.random() > 0.5:
                     mixed_text.append(random.choice(chinese_placeholders))
@@ -310,10 +359,9 @@ class LifeHelper:
         else:
             print(f"✅ 解密后文本：{final_text}")
 
-    # 功能9：系统信息快速查询（已删除磁盘可用空间查询逻辑）
+    # 功能9：系统信息查询
     def system_info_query(self):
         print("\n==== 系统信息查询 ====")
-        # 操作系统类型
         if os.name == "nt":
             sys_type = "Windows 系统"
         elif os.name == "posix":
@@ -321,7 +369,6 @@ class LifeHelper:
         else:
             sys_type = "未知系统"
 
-        # 当前用户名
         try:
             if os.name == "nt":
                 username = os.getlogin()
@@ -331,22 +378,20 @@ class LifeHelper:
         except:
             username = "无法获取"
 
-        # 当前工作目录
         work_dir = os.getcwd()
 
-        # 输出信息（已移除磁盘可用空间相关内容）
         print(f"==== 系统信息汇总 ====")
         print(f"操作系统类型：{sys_type}")
         print(f"当前登录用户名：{username}")
         print(f"当前工作目录：{work_dir}")
 
-    # 主界面（规整菜单序号）
+    # 主界面
     def run(self):
         while True:
             print("\n" + "=" * 30)
             print("      本地生活小助手")
             print("=" * 30)
-            print("1.  待办事项管理（新增删除功能）")
+            print("1.  待办事项管理（含自定义时间+删除）")
             print("2.  简易记账")
             print("3.  随机日程推荐")
             print("4.  生成搜索链接")
@@ -381,10 +426,12 @@ class LifeHelper:
                 break
             else:
                 print("❌ 无效选择，请输入0-9之间的数字！")
-            time.sleep(1)  # 延迟1秒，提升操作体验
+            time.sleep(1)
 
 
 if __name__ == "__main__":
-    # 实例化并运行程序
     helper = LifeHelper()
+    # 启动时打印TXT文件路径
+    txt_abs_path = os.path.abspath(helper.txt_data_path)
+    print(f"📄 可读数据文件将保存到：{txt_abs_path}")
     helper.run()
