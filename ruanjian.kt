@@ -1,442 +1,390 @@
 import os
-from datetime import datetime
+import time
+import json
+import random
+import datetime
+from urllib.parse import quote
 
 
-# ===================== 初始化与辅助函数 =====================
-def init_todo_file():
-    """初始化待办文件（不存在则创建，添加异常处理）"""
-    try:
-        if not os.path.exists("todo_list.txt"):
-            with open("todo_list.txt", "w", encoding="utf-8") as f:
-                f.write("")
-            print("待办文件初始化成功！")
-    except PermissionError:
-        print("错误：无文件写入权限，请检查目录权限设置！")
-        exit(1)
-    except Exception as e:
-        print(f"文件初始化失败：{str(e)}")
-        exit(1)
+class LifeHelper:
+    def __init__(self):
+        # 初始化本地数据文件
+        self.data_path = "life_helper_data.json"
+        self._load_data()
 
-
-def read_todo_data():
-    """读取待办数据（过滤空行和格式错误项，返回结构化列表）"""
-    init_todo_file()
-    try:
-        with open("todo_list.txt", "r", encoding="utf-8") as f:
-            lines = [line.strip() for line in f.readlines() if line.strip()]
-        todo_data = []
-        for line in lines:
-            parts = line.split("|", 2)
-            if len(parts) == 3 and parts[0] in ["0", "1"]:
-                todo_data.append({
-                    "status": parts[0],
-                    "task": parts[1],
-                    "deadline": parts[2]
-                })
-            else:
-                print(f"警告：忽略格式错误的记录：{line}")
-        return todo_data
-    except Exception as e:
-        print(f"读取待办数据失败：{str(e)}")
-        return []
-
-
-def write_todo_data(todo_data):
-    """写入待办数据到文件"""
-    try:
-        with open("todo_list.txt", "w", encoding="utf-8") as f:
-            for item in todo_data:
-                f.write(f"{item['status']}|{item['task']}|{item['deadline']}\n")
-        return True
-    except Exception as e:
-        print(f"写入待办数据失败：{str(e)}")
-        return False
-
-
-def check_duplicate(task_name):
-    """检查事项是否重复（不区分大小写）"""
-    todo_data = read_todo_data()
-    for item in todo_data:
-        if task_name.lower() == item["task"].lower():
-            return True
-    return False
-
-
-def check_expired_tasks():
-    """启动时检查过期未完成事项并提醒"""
-    todo_data = read_todo_data()
-    expired_tasks = []
-    today = datetime.now().date()
-
-    for item in todo_data:
-        if item["status"] == "0" and item["deadline"] != "无":
-            try:
-                deadline_date = datetime.strptime(item["deadline"], "%Y-%m-%d").date()
-                if deadline_date < today:
-                    expired_tasks.append(item)
-            except:
-                continue
-
-    if expired_tasks:
-        print("\n⚠️  过期提醒：以下未完成事项已超过截止时间！")
-        for idx, item in enumerate(expired_tasks, 1):
-            print(f"{idx}. {item['task']}（截止时间：{item['deadline']}）")
-        print()
-
-
-# ===================== 核心功能函数 =====================
-def add_todo():
-    """添加待办事项（支持重复检查、日期校验）"""
-    print("\n===== 添加待办事项 =====")
-    task_name = input("请输入待办事项名称：").strip()
-    if not task_name:
-        print("❌ 错误：事项名称不能为空！")
-        return
-
-    # 重复检查
-    if check_duplicate(task_name):
-        confirm = input(f"⚠️  警告：已存在相同/相似事项，是否继续添加？(y/n)：").strip().lower()
-        if confirm != "y":
-            print("已取消添加！")
-            return
-
-    # 日期校验与过期提醒
-    deadline = input("请输入截止时间（格式：YYYY-MM-DD，留空则为无）：").strip()
-    if deadline:
-        try:
-            deadline_date = datetime.strptime(deadline, "%Y-%m-%d")
-            if deadline_date < datetime.now():
-                confirm = input(f"⚠️  警告：截止时间已过期，是否继续添加？(y/n)：").strip().lower()
-                if confirm != "y":
-                    print("已取消添加！")
-                    return
-        except ValueError:
-            print("❌ 日期格式错误！将不记录截止时间。")
-            deadline = "无"
-    else:
-        deadline = "无"
-
-    # 写入数据
-    todo_data = read_todo_data()
-    todo_data.append({
-        "status": "0",
-        "task": task_name,
-        "deadline": deadline
-    })
-
-    if write_todo_data(todo_data):
-        print("✅ 待办事项添加成功！")
-    else:
-        print("❌ 待办事项添加失败！")
-
-
-def view_todos():
-    """查看待办事项（支持筛选、排序、统计）"""
-    todo_data = read_todo_data()
-    if not todo_data:
-        print("\n📭 当前暂无待办事项！")
-        return
-
-    print("\n===== 我的待办清单 =====")
-    # 统计信息
-    total = len(todo_data)
-    completed = sum(1 for item in todo_data if item["status"] == "1")
-    pending = total - completed
-    print(f"📊 统计：总计{total}项 | 已完成{completed}项 | 未完成{pending}项")
-
-    # 筛选功能
-    filter_choice = input("\n是否需要筛选？(1-未完成 / 2-已完成 / 3-全部，默认3)：").strip()
-    if filter_choice == "1":
-        filtered_data = [item for item in todo_data if item["status"] == "0"]
-        print(f"\n🔍 筛选结果：未完成事项（共{pending}项）")
-    elif filter_choice == "2":
-        filtered_data = [item for item in todo_data if item["status"] == "1"]
-        print(f"\n🔍 筛选结果：已完成事项（共{completed}项）")
-    else:
-        filtered_data = todo_data
-        print(f"\n🔍 筛选结果：全部事项（共{total}项）")
-
-    if not filtered_data:
-        print("📭 该筛选条件下无匹配事项！")
-        return
-
-    # 排序功能
-    sort_choice = input("排序方式？(1-添加顺序 / 2-截止时间，默认1)：").strip()
-    if sort_choice == "2":
-        # 按截止时间排序（无截止时间放最后）
-        filtered_data.sort(key=lambda x:
-        datetime.strptime(x["deadline"], "%Y-%m-%d") if x["deadline"] != "无" else datetime.max
-                           )
-
-    # 显示结果
-    for idx, item in enumerate(filtered_data, 1):
-        status_text = "✅ 已完成" if item["status"] == "1" else "❌ 未完成"
-        print(f"\n{idx}. {status_text}")
-        print(f"   事项：{item['task']}")
-        print(f"   截止时间：{item['deadline']}")
-    print("\n=======================")
-
-
-def search_todo():
-    """搜索待办事项（支持关键词匹配）"""
-    print("\n===== 搜索待办事项 =====")
-    keyword = input("请输入搜索关键词：").strip().lower()
-    if not keyword:
-        print("❌ 错误：关键词不能为空！")
-        return
-
-    todo_data = read_todo_data()
-    results = [
-        item for item in todo_data
-        if keyword in item["task"].lower() or keyword in item["deadline"].lower()
-    ]
-
-    if not results:
-        print(f"📭 未找到包含'{keyword}'的待办事项！")
-        return
-
-    print(f"\n🔍 找到{len(results)}项匹配结果：")
-    for idx, item in enumerate(results, 1):
-        status_text = "✅ 已完成" if item["status"] == "1" else "❌ 未完成"
-        print(f"\n{idx}. {status_text}")
-        print(f"   事项：{item['task']}")
-        print(f"   截止时间：{item['deadline']}")
-    print("\n=======================")
-
-
-def mark_completed():
-    """标记待办事项为已完成"""
-    view_todos()
-    todo_data = read_todo_data()
-    if not todo_data:
-        return
-
-    try:
-        idx = int(input("\n请输入要标记完成的待办序号：").strip())
-        if idx < 1 or idx > len(todo_data):
-            print("❌ 错误：序号不存在！")
-            return
-
-        todo_data[idx - 1]["status"] = "1"
-        if write_todo_data(todo_data):
-            print("✅ 标记完成成功！")
+    def _load_data(self):
+        """加载本地数据（待办、记账）"""
+        if os.path.exists(self.data_path):
+            with open(self.data_path, "r", encoding="utf-8") as f:
+                self.data = json.load(f)
         else:
-            print("❌ 标记完成失败！")
-    except ValueError:
-        print("❌ 错误：请输入有效的数字序号！")
+            self.data = {
+                "todos": [],  # 待办事项：[{"content": "xxx", "done": False, "time": "2025-12-31"}]
+                "expenses": []  # 记账：[{"item": "xxx", "amount": 10, "time": "2025-12-31"}]
+            }
 
+    def _save_data(self):
+        """保存数据到本地"""
+        with open(self.data_path, "w", encoding="utf-8") as f:
+            json.dump(self.data, f, ensure_ascii=False, indent=2)
 
-def edit_todo():
-    """编辑待办事项（支持修改名称和截止时间）"""
-    view_todos()
-    todo_data = read_todo_data()
-    if not todo_data:
-        return
-
-    try:
-        idx = int(input("\n请输入要编辑的待办序号：").strip())
-        if idx < 1 or idx > len(todo_data):
-            print("❌ 错误：序号不存在！")
-            return
-
-        target_item = todo_data[idx - 1]
-        print(f"\n当前事项：")
-        print(f"   事项：{target_item['task']}")
-        print(f"   截止时间：{target_item['deadline']}")
-
-        # 编辑选项
-        print("\n编辑选项：")
-        print("1. 修改事项名称")
-        print("2. 修改截止时间")
-        print("3. 同时修改两者")
-        edit_choice = input("请选择编辑类型（1-3）：").strip()
-
-        new_task = target_item["task"]
-        new_deadline = target_item["deadline"]
-
-        if edit_choice in ["1", "3"]:
-            new_task = input("请输入新的事项名称（留空则保持不变）：").strip() or target_item["task"]
-            # 重复检查
-            if check_duplicate(new_task) and new_task != target_item["task"]:
-                confirm = input(f"⚠️  警告：已存在相同/相似事项，是否继续修改？(y/n)：").strip().lower()
-                if confirm != "y":
-                    print("已取消修改！")
-                    return
-
-        if edit_choice in ["2", "3"]:
-            new_deadline = input("请输入新的截止时间（格式：YYYY-MM-DD，留空则为无）：").strip()
-            if new_deadline:
-                try:
-                    datetime.strptime(new_deadline, "%Y-%m-%d")
-                    if datetime.strptime(new_deadline, "%Y-%m-%d") < datetime.now():
-                        confirm = input(f"⚠️  警告：截止时间已过期，是否继续？(y/n)：").strip().lower()
-                        if confirm != "y":
-                            print("已取消修改！")
-                            return
-                except ValueError:
-                    print("❌ 日期格式错误！将保持原截止时间。")
-                    new_deadline = target_item["deadline"]
-            else:
-                new_deadline = "无"
-
-        # 更新数据
-        todo_data[idx - 1]["task"] = new_task
-        todo_data[idx - 1]["deadline"] = new_deadline
-
-        if write_todo_data(todo_data):
-            print("✅ 待办事项修改成功！")
-        else:
-            print("❌ 待办事项修改失败！")
-
-    except ValueError:
-        print("❌ 错误：请输入有效的数字序号！")
-
-
-def delete_todo():
-    """删除待办事项（支持二次确认）"""
-    view_todos()
-    todo_data = read_todo_data()
-    if not todo_data:
-        return
-
-    try:
-        idx = int(input("\n请输入要删除的待办序号：").strip())
-        if idx < 1 or idx > len(todo_data):
-            print("❌ 错误：序号不存在！")
-            return
-
-        confirm = input(f"确认要删除「{todo_data[idx - 1]['task']}」吗？(y/n)：").strip().lower()
-        if confirm != "y":
-            print("已取消删除！")
-            return
-
-        del todo_data[idx - 1]
-        if write_todo_data(todo_data):
-            print("✅ 删除成功！")
-        else:
-            print("❌ 删除失败！")
-    except ValueError:
-        print("❌ 错误：请输入有效的数字序号！")
-
-
-def batch_operation():
-    """批量操作（批量标记完成/批量删除）"""
-    print("\n===== 批量操作 =====")
-    print("1. 批量标记已完成")
-    print("2. 批量删除待办")
-    choice = input("请选择操作类型（1-2）：").strip()
-    if choice not in ["1", "2"]:
-        print("❌ 错误：无效的选择！")
-        return
-
-    todo_data = read_todo_data()
-    if not todo_data:
-        print("📭 当前暂无待办事项！")
-        return
-
-    view_todos()
-    print("\n请输入要操作的序号（多个序号用逗号分隔，如：1,3,5）：")
-    input_str = input().strip()
-    if not input_str:
-        print("❌ 错误：未输入任何序号！")
-        return
-
-    # 解析序号
-    try:
-        indices = [int(x.strip()) for x in input_str.split(",") if x.strip().isdigit()]
-        valid_indices = [i for i in indices if 1 <= i <= len(todo_data)]
-        invalid_indices = [i for i in indices if i not in valid_indices]
-
-        if invalid_indices:
-            print(f"⚠️  警告：以下序号无效，将忽略：{','.join(map(str, invalid_indices))}")
-        if not valid_indices:
-            print("❌ 错误：无有效序号可操作！")
-            return
-
-        # 执行操作
-        confirm = input(f"确认要对{len(valid_indices)}个事项执行操作？(y/n)：").strip().lower()
-        if confirm != "y":
-            print("已取消操作！")
-            return
+    # 功能1：待办事项管理（新增删除功能）
+    def todo_manager(self):
+        print("\n==== 待办事项管理 ====")
+        print("1. 添加待办")
+        print("2. 查看待办")
+        print("3. 标记待办为完成")
+        print("4. 删除待办事项")  # 新增删除选项
+        choice = input("请选择操作（1/2/3/4）：")
 
         if choice == "1":
-            # 批量标记完成
-            for idx in valid_indices:
-                todo_data[idx - 1]["status"] = "1"
-            if write_todo_data(todo_data):
-                print(f"✅ 成功标记{len(valid_indices)}个事项为已完成！")
-        else:
-            # 批量删除（倒序删除避免索引错乱）
-            for idx in sorted(valid_indices, reverse=True):
-                del todo_data[idx - 1]
-            if write_todo_data(todo_data):
-                print(f"✅ 成功删除{len(valid_indices)}个事项！")
+            content = input("输入待办内容：")
+            self.data["todos"].append({
+                "content": content,
+                "done": False,
+                "time": datetime.date.today().strftime("%Y-%m-%d")
+            })
+            self._save_data()
+            print("✅ 待办添加成功！")
 
-    except Exception as e:
-        print(f"❌ 操作失败：{str(e)}")
-
-
-# ===================== 主程序入口 =====================
-def main():
-    init_todo_file()
-    print("=" * 40)
-    print("🎉 欢迎使用个人待办清单工具（优化版）🎉")
-    print("=" * 40)
-
-    # 启动时检查过期事项
-    check_expired_tasks()
-
-    while True:
-        print("\n📋 功能菜单：")
-        print("1. 添加待办事项 (快捷键：a)")
-        print("2. 查看/筛选待办 (快捷键：v)")
-        print("3. 搜索待办事项 (快捷键：s)")
-        print("4. 标记待办为已完成 (快捷键：m)")
-        print("5. 编辑待办事项 (快捷键：e)")
-        print("6. 删除待办事项 (快捷键：d)")
-        print("7. 批量操作 (快捷键：b)")
-        print("8. 退出工具 (快捷键：q)")
-
-        choice = input("\n请输入功能序号或快捷键：").strip().lower()
-        print("-" * 40)
-
-        # 快捷键映射
-        key_map = {
-            "a": "1", "v": "2", "s": "3", "m": "4",
-            "e": "5", "d": "6", "b": "7", "q": "8"
-        }
-        if choice in key_map:
-            choice = key_map[choice]
-
-        # 功能分发
-        if choice == "1":
-            add_todo()
         elif choice == "2":
-            view_todos()
+            if not self.data["todos"]:
+                print("暂无待办事项~")
+                return
+            print("\n==== 我的待办列表 ====")
+            for i, todo in enumerate(self.data["todos"], 1):
+                status = "✅ 已完成" if todo["done"] else "🔲 未完成"
+                print(f"序号：{i} | 内容：{todo['content']} | 创建时间：{todo['time']} | 状态：{status}")
+
         elif choice == "3":
-            search_todo()
-        elif choice == "4":
-            mark_completed()
-        elif choice == "5":
-            edit_todo()
-        elif choice == "6":
-            delete_todo()
-        elif choice == "7":
-            batch_operation()
-        elif choice == "8":
-            confirm = input("确认要退出吗？(y/n)：").strip().lower()
-            if confirm == "y":
-                print("👋 感谢使用，再见！")
+            if not self.data["todos"]:
+                print("暂无待办事项~")
+                return
+            # 先展示待办列表，方便用户选择序号
+            print("\n==== 我的待办列表 ====")
+            for i, todo in enumerate(self.data["todos"], 1):
+                status = "✅ 已完成" if todo["done"] else "🔲 未完成"
+                print(f"序号：{i} | 内容：{todo['content']} | 状态：{status}")
+            try:
+                idx = int(input("\n输入要标记完成的待办序号：")) - 1
+                if 0 <= idx < len(self.data["todos"]):
+                    if self.data["todos"][idx]["done"]:
+                        print("⚠️  该待办已标记为完成，无需重复操作！")
+                    else:
+                        self.data["todos"][idx]["done"] = True
+                        self._save_data()
+                        print("✅ 待办标记为完成！")
+                else:
+                    print("❌ 序号无效！")
+            except ValueError:
+                print("❌ 请输入有效的数字序号！")
+
+        elif choice == "4":  # 新增删除待办逻辑
+            if not self.data["todos"]:
+                print("暂无待办事项，无需删除！")
+                return
+            # 先展示待办列表，方便用户选择序号
+            print("\n==== 我的待办列表 ====")
+            for i, todo in enumerate(self.data["todos"], 1):
+                status = "✅ 已完成" if todo["done"] else "🔲 未完成"
+                print(f"序号：{i} | 内容：{todo['content']} | 状态：{status}")
+            try:
+                idx = int(input("\n输入要删除的待办序号：")) - 1
+                if 0 <= idx < len(self.data["todos"]):
+                    # 获取待办内容，确认删除
+                    todo_content = self.data["todos"][idx]["content"]
+                    confirm = input(f"确定要删除待办「{todo_content}」吗？（y/n）：").lower()
+                    if confirm == "y":
+                        del self.data["todos"][idx]
+                        self._save_data()
+                        print(f"✅ 已成功删除待办「{todo_content}」！")
+                    else:
+                        print("⚠️  已取消删除操作！")
+                else:
+                    print("❌ 序号无效！")
+            except ValueError:
+                print("❌ 请输入有效的数字序号！")
+
+        else:
+            print("❌ 无效操作选项，请选择1-4！")
+
+    # 功能2：简易记账
+    def expense_tracker(self):
+        print("\n==== 简易记账 ====")
+        print("1. 添加支出")
+        print("2. 查看本月支出")
+        choice = input("请选择操作（1/2）：")
+
+        if choice == "1":
+            item = input("输入支出项目：")
+            amount = float(input("输入金额："))
+            self.data["expenses"].append({
+                "item": item,
+                "amount": amount,
+                "time": datetime.date.today().strftime("%Y-%m-%d")
+            })
+            self._save_data()
+            print("✅ 记账成功！")
+
+        elif choice == "2":
+            month = datetime.date.today().strftime("%Y-%m")
+            total = 0.0
+            print(f"\n==== {month} 支出明细 ====")
+            for exp in self.data["expenses"]:
+                if exp["time"].startswith(month):
+                    print(f"{exp['time']} | {exp['item']} | {exp['amount']:.2f}元")
+                    total += exp["amount"]
+            print(f"本月总支出：{total:.2f}元")
+
+    # 功能3：随机日程推荐（基于本地模板）
+    def random_schedule(self):
+        print("\n==== 随机日程推荐 ====")
+        schedules = [
+            "今天可以看一部高分电影（推荐：《肖申克的救赎》）",
+            "花30分钟做一组居家运动（比如帕梅拉15分钟燃脂操）",
+            "读20页书，然后写3句读书笔记",
+            "整理手机相册，把重复照片删除",
+            "给很久没联系的朋友发一条问候消息"
+        ]
+        print(f"💡 今日推荐：{random.choice(schedules)}")
+
+    # 功能4：生成搜索链接（打开浏览器用）
+    def gen_search_link(self):
+        print("\n==== 生成搜索链接 ====")
+        keyword = input("输入要搜索的内容：")
+        link = f"https://www.baidu.com/s?wd={quote(keyword)}"
+        print(f"🔗 搜索链接：{link}")
+        print("提示：复制链接到浏览器打开即可搜索")
+
+    # 功能5：安全密码生成器
+    def password_generator(self):
+        print("\n==== 安全密码生成器 ====")
+        # 密码字符集
+        lower_chars = "abcdefghijklmnopqrstuvwxyz"
+        upper_chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        digits = "0123456789"
+        symbols = "!@#$%^&*()_+-=[]{}|;:,.<>?"
+
+        # 获取用户配置
+        try:
+            pwd_length = int(input("输入密码长度（建议8位及以上）："))
+            if pwd_length < 4:
+                print("❌ 密码长度建议不小于4位！")
+                return
+            use_symbol = input("是否包含特殊字符？（y/n）：").lower() == "y"
+        except ValueError:
+            print("❌ 输入无效，请输入数字！")
+            return
+
+        # 组装字符集
+        char_pool = lower_chars + upper_chars + digits
+        if use_symbol:
+            char_pool += symbols
+
+        # 生成密码（确保至少包含各类字符各1个）
+        pwd_list = []
+        pwd_list.append(random.choice(lower_chars))
+        pwd_list.append(random.choice(upper_chars))
+        pwd_list.append(random.choice(digits))
+        if use_symbol:
+            pwd_list.append(random.choice(symbols))
+
+        # 补充剩余长度
+        if pwd_length > len(pwd_list):
+            pwd_list += random.choices(char_pool, k=pwd_length - len(pwd_list))
+
+        # 打乱顺序
+        random.shuffle(pwd_list)
+        password = "".join(pwd_list)
+
+        print(f"✅ 生成的密码：{password}")
+        print("提示：请妥善保存密码，避免泄露！")
+
+    # 功能6：文本内容统计
+    def text_statistics(self):
+        print("\n==== 文本内容统计 ====")
+        file_path = input("输入文本文件路径（如：./note.txt）：")
+        if not os.path.isfile(file_path) or not file_path.endswith((".txt", ".md")):
+            print("❌ 无效的文本文件（仅支持.txt/.md格式）！")
+            return
+
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                content = f.read()
+                lines = content.splitlines()  # 按行分割（不含换行符）
+        except Exception as e:
+            print(f"❌ 文件读取失败：{str(e)}")
+            return
+
+        # 统计数据
+        total_chars = len(content)  # 含空格、标点的总字符数
+        pure_chars = len(content.replace(" ", "").replace("\n", "").replace("\t", ""))  # 不含空格的纯字符数
+        line_count = len(lines)  # 总行数
+        # 单词数（按空格分割，过滤空字符串）
+        word_count = len([word for word in content.split() if word.strip()])
+
+        # 输出结果
+        print(f"\n==== 文本统计结果 ====")
+        print(f"总字符数（含空格/换行）：{total_chars}")
+        print(f"纯字符数（不含空格/换行）：{pure_chars}")
+        print(f"文本总行数：{line_count}")
+        print(f"单词数（按空格分割）：{word_count}")
+
+    # 功能7：日期计算器
+    def date_calculator(self):
+        print("\n==== 日期计算器 ====")
+        print("1. 计算两个日期的天数差")
+        print("2. 推算N天前/后的日期")
+        choice = input("请选择操作（1/2）：")
+
+        # 日期格式化辅助函数
+        def parse_date(date_str):
+            try:
+                return datetime.datetime.strptime(date_str, "%Y-%m-%d").date()
+            except ValueError:
+                return None
+
+        if choice == "1":
+            date1_str = input("输入第一个日期（格式：YYYY-MM-DD，如：2025-12-31）：")
+            date2_str = input("输入第二个日期（格式：YYYY-MM-DD，如：2026-01-01）：")
+            date1 = parse_date(date1_str)
+            date2 = parse_date(date2_str)
+
+            if not date1 or not date2:
+                print("❌ 日期格式无效！请按YYYY-MM-DD输入")
+                return
+
+            day_diff = abs((date1 - date2).days)
+            print(f"✅ 两个日期相差：{day_diff} 天")
+
+        elif choice == "2":
+            try:
+                days = int(input("输入天数（正数=未来，负数=过去，如：7 或 -3）："))
+            except ValueError:
+                print("❌ 天数必须是数字！")
+                return
+            current_date = datetime.date.today()
+            target_date = current_date + datetime.timedelta(days=days)
+            print(f"✅ 当前日期：{current_date.strftime('%Y-%m-%d')}")
+            print(f"✅ {days} 天后/前的日期：{target_date.strftime('%Y-%m-%d')}")
+
+    # 功能8：简易文本加密/解密（凯撒密码+中文占位混淆）
+    def caesar_cipher(self):
+        print("\n==== 凯撒密码加密/解密 ====")
+        print("1. 加密文本（含中文占位混淆）")
+        print("2. 解密文本")
+        choice = input("请选择操作（1/2）：")
+        text = input("输入要处理的文本：")
+        try:
+            shift = int(input("输入偏移量（建议1-25，如：3）："))
+        except ValueError:
+            print("❌ 偏移量必须是数字！")
+            return
+
+        result = []
+        # 凯撒密码核心逻辑（仅处理英文字母，其他字符不变）
+        for char in text:
+            if char.islower():
+                new_char = chr((ord(char) - ord('a') + shift * (1 if choice == "1" else -1)) % 26 + ord('a'))
+                result.append(new_char)
+            elif char.isupper():
+                new_char = chr((ord(char) - ord('A') + shift * (1 if choice == "1" else -1)) % 26 + ord('A'))
+                result.append(new_char)
+            else:
+                result.append(char)
+
+        final_text = "".join(result)
+
+        # 加密时添加中文随机占位（解密时不处理，占位符不影响英文还原）
+        if choice == "1":
+            # 中文占位词库
+            chinese_placeholders = ["的", "了", "在", "是", "我", "你", "他", "她", "它", "们", "这", "那"]
+            mixed_text = []
+            for char in final_text:
+                # 每添加1个密文字符，随机插入0-1个中文占位符
+                mixed_text.append(char)
+                if random.random() > 0.5:
+                    mixed_text.append(random.choice(chinese_placeholders))
+            final_text = "".join(mixed_text)
+            print(f"✅ 加密后（含中文占位）：{final_text}")
+        else:
+            print(f"✅ 解密后文本：{final_text}")
+
+    # 功能9：系统信息快速查询（已删除磁盘可用空间查询逻辑）
+    def system_info_query(self):
+        print("\n==== 系统信息查询 ====")
+        # 操作系统类型
+        if os.name == "nt":
+            sys_type = "Windows 系统"
+        elif os.name == "posix":
+            sys_type = "Linux/Mac OS 系统"
+        else:
+            sys_type = "未知系统"
+
+        # 当前用户名
+        try:
+            if os.name == "nt":
+                username = os.getlogin()
+            else:
+                import pwd
+                username = pwd.getpwuid(os.getuid()).pw_name
+        except:
+            username = "无法获取"
+
+        # 当前工作目录
+        work_dir = os.getcwd()
+
+        # 输出信息（已移除磁盘可用空间相关内容）
+        print(f"==== 系统信息汇总 ====")
+        print(f"操作系统类型：{sys_type}")
+        print(f"当前登录用户名：{username}")
+        print(f"当前工作目录：{work_dir}")
+
+    # 主界面（规整菜单序号）
+    def run(self):
+        while True:
+            print("\n" + "=" * 30)
+            print("      本地生活小助手")
+            print("=" * 30)
+            print("1.  待办事项管理（新增删除功能）")
+            print("2.  简易记账")
+            print("3.  随机日程推荐")
+            print("4.  生成搜索链接")
+            print("5.  安全密码生成器")
+            print("6.  文本内容统计")
+            print("7.  日期计算器")
+            print("8.  凯撒密码加密/解密")
+            print("9.  系统信息查询")
+            print("0.  退出程序")
+            choice = input("请选择功能（0-9）：")
+
+            if choice == "1":
+                self.todo_manager()
+            elif choice == "2":
+                self.expense_tracker()
+            elif choice == "3":
+                self.random_schedule()
+            elif choice == "4":
+                self.gen_search_link()
+            elif choice == "5":
+                self.password_generator()
+            elif choice == "6":
+                self.text_statistics()
+            elif choice == "7":
+                self.date_calculator()
+            elif choice == "8":
+                self.caesar_cipher()
+            elif choice == "9":
+                self.system_info_query()
+            elif choice == "0":
+                print("👋 程序已退出，再见！")
                 break
             else:
-                print("已取消退出，返回菜单～")
-        else:
-            print("❌ 输入错误，请选择1-8或对应的快捷键！")
-
-        if choice != "8":
-            input("\n按回车键返回菜单...")
-            print("\n" * 2)  # 清空屏幕效果
+                print("❌ 无效选择，请输入0-9之间的数字！")
+            time.sleep(1)  # 延迟1秒，提升操作体验
 
 
 if __name__ == "__main__":
-    main()
+    # 实例化并运行程序
+    helper = LifeHelper()
+    helper.run()
